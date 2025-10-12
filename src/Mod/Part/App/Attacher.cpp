@@ -1656,7 +1656,7 @@ Base::Placement AttachEngine3D::_calculateAttachedPlacement(
                 dirX = dirY.Crossed(SketchNormal);
             }
 
-            SketchXAxis = gp_Vec(dirX).Reversed();  // yields upside-down sketches less often.
+            SketchXAxis = gp_Vec(dirX);
 
             if (bThruVertex) {
                 SketchBasePoint = p;
