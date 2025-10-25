@@ -24,6 +24,11 @@
 #include <Base/Console.h>
 #include <Base/Tools.h>
 
+#include <App/Document.h>
+#include <App/ObjectIdentifier.h>
+#include <App/Expression.h>
+#include <App/ExpressionParser.h>
+
 #include "AttachExtension.h"
 #include "AttachExtensionPy.h"
 
@@ -477,6 +482,157 @@ bool AttachExtension::extensionHandleChangedPropertyName(Base::XMLReader& reader
     return App::DocumentObjectExtension::extensionHandleChangedPropertyName(reader, TypeName, PropName);
 }
 
+void AttachExtension::handleLegacyTangentPlaneOrientation()
+{
+    if (_props.attacher->mapMode != mmTangentPlane) {
+        return;
+    }
+
+    int major, minor;
+    if (sscanf(getExtendedObject()->getDocument()->getProgramVersion(), "%d.%d", &major, &minor) != 2) {
+        return;
+    }
+    if (major > 1 || (major == 1 && minor > 0)) {
+        return;
+    }
+
+    App::GeoFeature* geof = nullptr;
+    for (auto obj : this->AttachmentSupport.linkedObjects()) {
+        if (obj->isDerivedFrom(Base::Type::fromName("App::Plane"))) {
+            geof = dynamic_cast<App::GeoFeature*>(obj);
+            break;
+        }
+    }
+    if (!geof) {
+        return;
+    }
+
+    /*
+     * determine the dominant global axis aligned with the plane normal
+     */
+    // extracting plane normal
+    Base::Vector3d norm;
+    geof->Placement.getValue().getRotation().multVec(Base::Vector3d(0.0, 0.0, 1.0), norm);
+    gp_Dir normal(norm.x, norm.y, norm.z);
+
+    // determining dominant axis
+    gp_Dir globalX(1, 0, 0);
+    gp_Dir globalY(0, 1, 0);
+    gp_Dir globalZ(0, 0, 1);
+    double cosNX = normal.Dot(globalX);
+    double cosNY = normal.Dot(globalY);
+    double cosNZ = normal.Dot(globalZ);
+    std::vector<double> cosXYZ;
+    cosXYZ.push_back(fabs(cosNX));
+    cosXYZ.push_back(fabs(cosNY));
+    cosXYZ.push_back(fabs(cosNZ));
+    int axis = std::max_element(cosXYZ.begin(), cosXYZ.end()) - cosXYZ.begin();
+
+    // if Z is dominant, no changes needed
+    if (axis == 2) {
+        return;
+    }
+
+    /*
+     * correcting position and rotation
+     */
+    App::DocumentObject* owner = getExtendedObject();
+    Base::Console().message("Converting attachement offset of %s\n", owner->getNameInDocument());
+
+    try {
+        // extracting existing placement values
+        Base::Placement placement = this->AttachmentOffset.getValue();
+        Base::Vector3d position = placement.getPosition();
+        Base::Rotation rotation = placement.getRotation();
+        double yaw, pitch, roll;
+        rotation.getYawPitchRoll(yaw, pitch, roll);
+
+        // extracting existing expressions
+        App::ObjectIdentifier oidX(owner, true);
+        oidX.addComponent(App::ObjectIdentifier::SimpleComponent("AttachmentOffset"));
+        oidX.addComponent(App::ObjectIdentifier::SimpleComponent("Base"));
+        oidX.addComponent(App::ObjectIdentifier::SimpleComponent("x"));
+        App::ObjectIdentifier oidY(owner, true);
+        oidY.addComponent(App::ObjectIdentifier::SimpleComponent("AttachmentOffset"));
+        oidY.addComponent(App::ObjectIdentifier::SimpleComponent("Base"));
+        oidY.addComponent(App::ObjectIdentifier::SimpleComponent("y"));
+        App::ObjectIdentifier oidYaw(owner, true);
+        oidYaw.addComponent(App::ObjectIdentifier::SimpleComponent("AttachmentOffset"));
+        oidYaw.addComponent(App::ObjectIdentifier::SimpleComponent("Rotation"));
+        oidYaw.addComponent(App::ObjectIdentifier::SimpleComponent("Yaw"));
+        const App::Expression* exprX = nullptr;
+        const App::Expression* exprY = nullptr;
+        const App::Expression* exprYaw = nullptr;
+        for (const auto& [oid, expr] : owner->ExpressionEngine.getExpressions()) {
+            if (oid == oidX) {
+                exprX = expr;
+            } else if (oid == oidY) {
+                exprY = expr;
+            } else if (oid == oidYaw) {
+                exprYaw = expr;
+            }
+        }
+
+        // converting based on dominant axis
+        App::Expression* newExprX = nullptr;
+        App::Expression* newExprY = nullptr;
+        App::Expression* newExprYaw = nullptr;
+        if (axis == 0) { // normal mostly X
+            // values
+            std::swap(position.x, position.y);
+            position.x = -position.x;
+            rotation.setYawPitchRoll(yaw + 90, pitch, roll);
+
+            // expressions
+            if (exprX) {
+                newExprY = App::ExpressionParser::parse(owner, exprX->toString().c_str());
+            }
+            if (exprY) {
+                std::string expr = "-1 * (" + exprY->toString() + ")";
+                newExprX = App::ExpressionParser::parse(owner, expr.c_str());
+            }
+            if (exprYaw) {
+                std::string expr = "(" + exprYaw->toString() + ") + 90 deg";
+                newExprYaw =App::ExpressionParser::parse(owner, expr.c_str());
+            }
+        }
+        else if (axis == 1) { // normal mostly Y
+            // values
+            std::swap(position.x, position.y);
+            position.y = -position.y;
+            rotation.setYawPitchRoll(yaw - 90, pitch, roll);
+
+            // expressions
+            if (exprX) {
+                std::string expr = "-1 * (" + exprX->toString() + ")";
+                newExprY = App::ExpressionParser::parse(owner, expr.c_str());
+            }
+            if (exprY) {
+                newExprX = App::ExpressionParser::parse(owner, exprY->toString().c_str());
+            }
+            if (exprYaw) {
+                std::string expr = "(" + exprYaw->toString() + ") - 90 deg";
+                newExprYaw =App::ExpressionParser::parse(owner, expr.c_str());
+            }
+        }
+
+        // storing back
+        // expressions
+        owner->ExpressionEngine.setValue(oidX, std::move(App::ExpressionPtr(newExprX)));
+        owner->ExpressionEngine.setValue(oidY, std::move(App::ExpressionPtr(newExprY)));
+        owner->ExpressionEngine.setValue(oidYaw, std::move(App::ExpressionPtr(newExprYaw)));
+
+        // values
+        placement.setPosition(position);
+        placement.setRotation(rotation);
+        this->AttachmentOffset.setValue(placement);
+
+    } catch (const Base::Exception& e) {
+        Base::Console().error("Error converting attachement offset of %s: %s\n",
+                              owner->getNameInDocument(), e.what());
+    }
+}
+
 void AttachExtension::onExtendedDocumentRestored()
 {
     try {
@@ -491,6 +647,10 @@ void AttachExtension::onExtendedDocumentRestored()
         updatePropertyStatus(isAttacherActive());
 
         restoreAttacherEngine(this);
+
+        if (_props.attacher->mapMode == mmTangentPlane) {
+            handleLegacyTangentPlaneOrientation();
+        }
 
         bool bAttached = positionBySupport();
 
