@@ -42,6 +42,7 @@
 #include <Base/Interpreter.h>
 
 #include <Mod/Part/App/DatumFeature.h>
+#include <Mod/Part/App/Datums.h>
 #include <Mod/Part/App/PartFeature.h>
 #include <Mod/PartDesign/App/Body.h>
 
@@ -579,7 +580,11 @@ App::DocumentObject* getObjFromRef(const App::DocumentObject* obj, const std::st
             continue;
         }
         else if (obj->isDerivedFrom<PartDesign::Body>()) {
-            return handlePartDesignBody(obj, it);
+            auto* retObj = handlePartDesignBody(obj, it);;
+            if (retObj && retObj->isDerivedFrom<Part::LocalCoordinateSystem>()) {
+                retObj = handlePartDesignBody(retObj, std::next(it));
+            }
+            return retObj;
         }
         else if (obj->isDerivedFrom<PartApp::Feature>()) {
             // Primitive, fastener, gear, etc.
@@ -589,6 +594,9 @@ App::DocumentObject* getObjFromRef(const App::DocumentObject* obj, const std::st
             App::DocumentObject* linked_obj = obj->getLinkedObject();
             if (linked_obj->isDerivedFrom<PartDesign::Body>()) {
                 auto* retObj = handlePartDesignBody(linked_obj, it);
+                if (retObj && retObj->isDerivedFrom<Part::LocalCoordinateSystem>()) {
+                    retObj = handlePartDesignBody(retObj, std::next(it));
+                }
                 return retObj == linked_obj ? obj : retObj;
             }
             else if (linked_obj->isDerivedFrom<PartApp::Feature>()) {
