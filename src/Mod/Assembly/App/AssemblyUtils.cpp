@@ -580,7 +580,7 @@ App::DocumentObject* getObjFromRef(const App::DocumentObject* obj, const std::st
             continue;
         }
         else if (obj->isDerivedFrom<PartDesign::Body>()) {
-            auto* retObj = handlePartDesignBody(obj, it);;
+            auto* retObj = handlePartDesignBody(obj, it);
             if (retObj && retObj->isDerivedFrom<Part::LocalCoordinateSystem>()) {
                 retObj = handlePartDesignBody(retObj, std::next(it));
             }
