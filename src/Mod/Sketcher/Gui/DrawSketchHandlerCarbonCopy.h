@@ -133,6 +133,10 @@ class DrawSketchHandlerCarbonCopy: public DrawSketchHandler
 {
     Q_DECLARE_TR_FUNCTIONS(SketcherGui::DrawSketchHandlerCarbonCopy)
 
+private:
+    std::unordered_set<std::string> copiedNormal;
+    std::unordered_set<std::string> copiedConstruction;
+
 public:
     DrawSketchHandlerCarbonCopy() = default;
     ~DrawSketchHandlerCarbonCopy() override
@@ -167,6 +171,13 @@ public:
     bool onSelectionChanged(const Gui::SelectionChanges& msg) override
     {
         if (msg.Type == Gui::SelectionChanges::AddSelection) {
+            // Skip already processed sketches to avoid repeated CarbonCopy
+            auto& copiedList = 
+                isConstructionMode() ? copiedConstruction : copiedNormal;
+            if (copiedList.contains(msg.pObjectName)) {
+                return false;
+            }
+
             App::DocumentObject* obj = sketchgui->getObject()->getDocument()->getObject(
                 msg.pObjectName
             );
@@ -205,6 +216,14 @@ public:
                     );
                     abortCommand();
                 }
+
+                // Record processed sketches to avoid repeated CarbonCopy
+                if (isConstructionMode()) {
+                    copiedConstruction.insert(msg.pObjectName);
+                } else {
+                    copiedNormal.insert(msg.pObjectName);
+                }
+
                 return true;
             }
         }
@@ -224,6 +243,9 @@ private:
         Gui::Selection().clearSelection();
         Gui::Selection().rmvSelectionGate();
         Gui::Selection().addSelectionGate(new CarbonCopySelection(sketchgui->getObject()));
+
+        copiedNormal.clear();
+        copiedConstruction.clear();
     }
 
     QString getCrosshairCursorSVGName() const override
