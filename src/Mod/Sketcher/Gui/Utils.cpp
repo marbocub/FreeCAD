@@ -1018,7 +1018,7 @@ Gui::TreeWidget* SketcherGui::findModelTreeWidget()
     // (Independent -> "Tree view", Combined -> "Model").
     auto* mgr = Gui::DockWindowManager::instance();
 
-    QWidget* dock = mgr->getDockWindow("Tree view");
+    auto* dock = mgr->getDockWindow("Tree view");
     if (!dock || !dock->inherits("Gui::TreeDockWidget")) {
         dock = mgr->getDockWindow("Model");
         if (!dock || !dock->inherits("Gui::DockWnd::ComboView")) {
