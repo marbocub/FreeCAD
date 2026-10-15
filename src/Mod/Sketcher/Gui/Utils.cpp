@@ -1015,7 +1015,7 @@ int SketcherGui::indexOfGeoId(const std::vector<int>& vec, int elem)
 Gui::TreeWidget* SketcherGui::findModelTreeWidget()
 {
     // The target dock's name depends on the tree mode
-    // (Combined -> "Model", Independent -> "Tree view").
+    // (Independent -> "Tree view", Combined -> "Model").
     QWidget* dock = qobject_cast<Gui::TreeDockWidget*>(
         Gui::DockWindowManager::instance()->getDockWindow("Tree view")
     );
