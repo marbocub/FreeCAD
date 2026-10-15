@@ -1016,16 +1016,14 @@ Gui::TreeWidget* SketcherGui::findModelTreeWidget()
 {
     // The target dock's name depends on the tree mode
     // (Independent -> "Tree view", Combined -> "Model").
-    QWidget* dock = qobject_cast<Gui::TreeDockWidget*>(
-        Gui::DockWindowManager::instance()->getDockWindow("Tree view")
-    );
-    if (!dock) {
-        dock = qobject_cast<Gui::DockWnd::ComboView*>(
-            Gui::DockWindowManager::instance()->getDockWindow("Model")
-        );
-    }
-    if (!dock) {
-        return nullptr;
+    auto* mgr = Gui::DockWindowManager::instance();
+
+    QWidget* dock = mgr->getDockWindow("Tree view");
+    if (!dock || !dock->inherits("Gui::TreeDockWidget")) {
+        dock = mgr->getDockWindow("Model");
+        if (!dock || !dock->inherits("Gui::DockWnd::ComboView")) {
+            return nullptr;
+        }
     }
 
     for (auto* w : dock->findChildren<QWidget*>()) {
